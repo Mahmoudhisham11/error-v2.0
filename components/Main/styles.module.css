@@ -1,0 +1,42 @@
+.mainContainer {
+    width: 100%;
+    min-height: 100vh;
+    padding: 20px 2%;
+}
+.btnsContainer {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+}
+.btnsContainer button {
+    width: 50%;
+    height: 50px;
+    border-radius: 8px;
+    font-size: 20px;
+    border: none;
+    color: white;
+    background-color: var(--black-color);
+    cursor: pointer;
+    transition: .3s;
+}
+.btnsContainer button:hover {
+    background-color: var(--main-color);
+}
+.content {
+    width: 100%;
+    margin-top: 40px;
+}
+.amoutContainer {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+.tableContainer {
+    width: 100%;
+    margin-top: 30px;
+}

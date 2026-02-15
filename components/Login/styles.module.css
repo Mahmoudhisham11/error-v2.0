@@ -1,0 +1,231 @@
+.loginContainer {
+  width: 100%;
+  min-height: 100vh;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  direction: rtl;
+}
+
+/* Header */
+.header {
+  width: 100%;
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  position: relative;
+  z-index: 10;
+}
+
+.logo {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--main-color);
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+/* Form Wrapper */
+.formWrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  width: 100%;
+}
+
+.formCard {
+  width: 100%;
+  max-width: 450px;
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-2xl);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--color-gray-200);
+}
+
+/* Form Header */
+.formHeader {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+}
+
+.formTitle {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-gray-900);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.formSubtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-gray-600);
+  margin: 0;
+}
+
+/* Form Content */
+.formContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* Input Group */
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.label {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-gray-700);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.labelIcon {
+  font-size: var(--font-size-lg);
+  color: var(--main-color);
+}
+
+/* Input */
+.input {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 2px solid var(--color-gray-300);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  transition: all var(--transition-fast);
+  background: white;
+  color: var(--color-gray-900);
+  outline: none;
+}
+
+.input:hover {
+  border-color: var(--color-gray-400);
+}
+
+.input:focus {
+  border-color: var(--main-color);
+  box-shadow: 0 0 0 3px rgba(212, 172, 13, 0.1);
+  background-color: #fffef9;
+}
+
+.input::placeholder {
+  color: var(--color-gray-400);
+}
+
+/* Password Wrapper */
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordWrapper .input {
+  padding-right: var(--spacing-3xl);
+}
+
+.passwordToggle {
+  position: absolute;
+  right: var(--spacing-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-gray-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xs);
+  transition: color var(--transition-fast);
+  z-index: 1;
+}
+
+.passwordToggle:hover {
+  color: var(--main-color);
+}
+
+.passwordToggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Submit Button */
+.submitButton {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--main-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-top: var(--spacing-sm);
+}
+
+.submitButton:hover {
+  background: #b8940a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(212, 172, 13, 0.3);
+}
+
+.submitButton:active {
+  transform: translateY(0);
+}
+
+/* Toggle Link */
+.toggleLink {
+  text-align: center;
+  margin-top: var(--spacing-md);
+  font-size: var(--font-size-base);
+  color: var(--color-gray-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+}
+
+.linkButton {
+  background: none;
+  border: none;
+  color: var(--main-color);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: color var(--transition-fast);
+}
+
+.linkButton:hover {
+  color: #b8940a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    padding: var(--spacing-lg) var(--spacing-lg);
+  }
+
+  .formWrapper {
+    padding: var(--spacing-lg);
+  }
+
+  .formCard {
+    padding: var(--spacing-xl);
+    max-width: 100%;
+  }
+
+  .formTitle {
+    font-size: var(--font-size-2xl);
+  }
+
+  .formSubtitle {
+    font-size: var(--font-size-base);
+  }
+}

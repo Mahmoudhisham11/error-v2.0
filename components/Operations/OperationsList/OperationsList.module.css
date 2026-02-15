@@ -1,0 +1,234 @@
+.container {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-gray-200);
+  overflow: hidden;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  flex: 1;
+}
+
+.tableWrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tableWrapper::-webkit-scrollbar-track {
+  background: var(--color-gray-100);
+}
+
+.tableWrapper::-webkit-scrollbar-thumb {
+  background: var(--color-gray-400);
+  border-radius: var(--radius-xl);
+}
+
+.tableWrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-500);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.table thead th {
+  background-color: #374151;
+  color: white;
+  padding: var(--spacing-md);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  border-bottom: none;
+}
+
+.table thead th:first-child {
+  border-top-right-radius: var(--radius-lg);
+}
+
+.table thead th:last-child {
+  border-top-left-radius: var(--radius-lg);
+}
+
+.table tbody tr {
+  transition: background-color var(--transition-fast);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background-color: var(--color-gray-50);
+}
+
+.table tbody td {
+  padding: var(--spacing-md);
+  text-align: center;
+  color: var(--color-gray-700);
+  font-size: var(--font-size-sm);
+}
+
+.phoneCell {
+  font-family: 'Courier New', monospace;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-900);
+}
+
+.moneyCell {
+  font-family: 'Courier New', monospace;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-900);
+}
+
+.typeBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  min-width: 70px;
+}
+
+.sendBadge {
+  background-color: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.receiveBadge {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.actionsCell {
+  padding: var(--spacing-sm) !important;
+}
+
+.deleteButton {
+  background: transparent;
+  border: 1px solid var(--color-gray-300);
+  color: var(--color-gray-600);
+  font-size: var(--font-size-lg);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  width: 32px;
+  height: 32px;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background-color: #fee2e2;
+  border-color: #ef4444;
+  color: #dc2626;
+  transform: scale(1.05);
+}
+
+.deleteButton:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.deleteButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--color-gray-700);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1024px) {
+  .container {
+    padding: var(--spacing-lg);
+  }
+
+  .table {
+    font-size: var(--font-size-xs);
+  }
+
+  .table thead th,
+  .table tbody td {
+    padding: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+  }
+
+  .table {
+    font-size: 11px;
+  }
+
+  .table thead th {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 10px;
+  }
+
+  .table tbody td {
+    padding: var(--spacing-xs);
+  }
+
+  .typeBadge {
+    font-size: 9px;
+    padding: 2px 6px;
+    min-width: 50px;
+  }
+
+  .deleteButton {
+    width: 28px;
+    height: 28px;
+    font-size: var(--font-size-base);
+  }
+}
+
+@media (max-width: 480px) {
+  .table {
+    font-size: 10px;
+  }
+
+  .table thead th {
+    padding: 6px 4px;
+    font-size: 9px;
+  }
+
+  .table tbody td {
+    padding: 6px 4px;
+  }
+
+  .phoneCell,
+  .moneyCell {
+    font-size: 10px;
+  }
+}
