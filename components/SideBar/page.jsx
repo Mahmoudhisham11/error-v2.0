@@ -134,13 +134,13 @@
             >
               <HiX />
             </button>
-          </div>
+        </div>
           <div className={styles.navigation}>
             <div className={styles.section}>
               <h3 className={styles.sectionTitle}>القائمة</h3>
               <div className={styles.links}>
                 {mainLinks.map(link => (
-                  (link.alwaysVisible || permissions[link.key]) && (
+            (link.alwaysVisible || permissions[link.key]) && (
                     <Link 
                       href={link.href} 
                       key={link.key} 
@@ -153,9 +153,9 @@
                     >
                       <span className={styles.icon}>{link.icon}</span>
                       <span className={styles.label}>{link.label}</span>
-                    </Link>
-                  )
-                ))}
+              </Link>
+            )
+          ))}
               </div>
             </div>
 
@@ -208,12 +208,12 @@
               <HiOutlineChevronLeft className={styles.chevronIcon} />
             </div>
 
-            <button onClick={handleLogout} className={styles.logoutBtn}>
+          <button onClick={handleLogout} className={styles.logoutBtn}>
               <span className={styles.icon}><RiLogoutCircleLine/></span>
               <span className={styles.label}>تسجيل الخروج</span>
-            </button>
-          </div>
+          </button>
         </div>
+      </div>
 
         <ConfirmModal
           isOpen={showLogoutConfirm}
