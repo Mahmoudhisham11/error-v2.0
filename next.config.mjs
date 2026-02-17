@@ -2,7 +2,8 @@ import withPWA from 'next-pwa';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // تم حذف experimental.turbo لأنه غير مدعوم في Next.js 15
+    // إعداد Turbopack لـ Next.js 16
+    turbopack: {},
 };
 
 export default withPWA({
