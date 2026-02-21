@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './ConfirmModal.module.css';
 import { IoMdCloseCircleOutline } from 'react-icons/io';
 
@@ -18,6 +19,11 @@ export default function ConfirmModal({
 }) {
   const [undoTimer, setUndoTimer] = useState(null);
   const [canUndo, setCanUndo] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -51,9 +57,9 @@ export default function ConfirmModal({
     onClose();
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
+  const modalContent = (
     <div className={styles.overlay} onClick={onClose}>
       <div className={`${styles.modal} ${styles[type]}`} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
@@ -113,5 +119,7 @@ export default function ConfirmModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 

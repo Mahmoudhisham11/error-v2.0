@@ -16,6 +16,7 @@
     const [permissions, setPermissions] = useState({});
     const [userName, setUserName] = useState('');
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [pendingLogoutConfirm, setPendingLogoutConfirm] = useState(false);
     const pathname = usePathname();
 
     useEffect(() => {
@@ -59,6 +60,15 @@
         }
       }
     }, [users, userName]);
+
+    // useEffect لمراقبة إغلاق SideBar وإظهار modal بعد الإغلاق
+    useEffect(() => {
+      if (!isOpen && pendingLogoutConfirm) {
+        // بعد إغلاق SideBar، إظهار modal
+        setShowLogoutConfirm(true);
+        setPendingLogoutConfirm(false);
+      }
+    }, [isOpen, pendingLogoutConfirm]);
 
     const mainLinks = [
       {
@@ -109,7 +119,14 @@
     ];
 
     const handleLogout = () => {
-      setShowLogoutConfirm(true);
+      // إغلاق SideBar في الموبايل أولاً
+      if (typeof window !== 'undefined' && window.innerWidth < 1024 && onClose) {
+        setPendingLogoutConfirm(true);
+        onClose();
+      } else {
+        // في الديسكتوب، إظهار popup مباشرة
+        setShowLogoutConfirm(true);
+      }
     };
 
     const confirmLogout = () => {
