@@ -110,6 +110,13 @@
         alwaysVisible: false
       },
       {
+        key: 'receivables',
+        href: '/receivables',
+        label: 'الديون',
+        icon: <TbReceipt />,
+        alwaysVisible: false
+      },
+      {
         key: 'expenses',
         href: '/expenses',
         label: 'المصاريف',

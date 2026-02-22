@@ -9,9 +9,9 @@ import OperationsList from '@/components/Operations/OperationsList/OperationsLis
 import ConfirmModal from '@/components/ui/ConfirmModal/ConfirmModal';
 import StatCard from '@/components/ui/StatCard/StatCard';
 import { useToast } from '@/components/ui/Toast/ToastProvider';
-import { TbSearch, TbTrendingUp, TbReceipt, TbMoneybag, TbDeviceDesktop, TbPhone, TbArrowsExchange, TbUser, TbCoins, TbCurrencyDollar } from 'react-icons/tb';
+import { TbSearch, TbTrendingUp, TbReceipt, TbMoneybag, TbDeviceDesktop, TbPhone, TbArrowsExchange, TbUser, TbCoins, TbCurrencyDollar, TbCalendar } from 'react-icons/tb';
 import { HiMenu, HiX } from 'react-icons/hi';
-import { collection, addDoc, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, runTransaction, limit } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, runTransaction, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import styles from './styles.module.css';
 
@@ -43,6 +43,11 @@ function OperationsPageContent() {
   const [confirmDetails, setConfirmDetails] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  // Credit operation state variables
+  const [isCredit, setIsCredit] = useState(false);
+  const [debtorName, setDebtorName] = useState('');
+  const [debtorPhone, setDebtorPhone] = useState('');
+  const [dueDate, setDueDate] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -132,6 +137,13 @@ function OperationsPageContent() {
   const totalProfit = useMemo(() => {
     return operations
       .filter(op => !op.closed || op.closed === false)  // Support old operations without 'closed' field
+      .filter(op => {
+        // استبعاد عمليات الأجل غير المدفوعة بالكامل
+        if (op.isCredit === true && op.creditStatus !== 'paid') {
+          return false;
+        }
+        return true;
+      })
       .reduce((acc, op) => acc + Number(op.commation || 0), 0);
   }, [operations]);
 
@@ -165,6 +177,19 @@ function OperationsPageContent() {
     if (amount === '' || amount === null || amount === undefined || isNaN(amountNum) || amountNum <= 0) {
       showToast('برجاء إدخال مبلغ صحيح', 'error');
       return false;
+    }
+
+    // Validate credit operation fields
+    if (isCredit) {
+      if (!debtorName || !debtorName.trim()) {
+        showToast('برجاء إدخال اسم المدين', 'error');
+        return false;
+      }
+      
+      if (!debtorPhone || !debtorPhone.trim()) {
+        showToast('برجاء إدخال رقم المدين', 'error');
+        return false;
+      }
     }
 
     // Validate line operations
@@ -202,8 +227,8 @@ function OperationsPageContent() {
         }
       }
 
-      // التحقق من رصيد النقدي (لعملية الاستلام فقط)
-      if (type === 'استلام') {
+      // التحقق من رصيد النقدي (لعملية الاستلام فقط - إذا لم تكن عملية أجل)
+      if (type === 'استلام' && !isCredit) {
         const currentCashAmount = cash?.amount || 0;
         if (currentCashAmount < amountNum) {
           showToast("رصيد النقدي غير كافي لتنفيذ عملية الاستلام", "error");
@@ -224,6 +249,12 @@ function OperationsPageContent() {
       }
 
       if (machineOperationType === 'deposit') {
+        // Deposit cannot be credit operation
+        if (isCredit) {
+          showToast('لا يمكن عمل إيداع بالأجل', 'error');
+          return false;
+        }
+        
         // For deposit, check cash availability and delegate name
         if (!delegateName || !delegateName.trim()) {
           showToast('برجاء إدخال اسم المندوب', 'error');
@@ -257,7 +288,7 @@ function OperationsPageContent() {
     }
 
     return true;
-  }, [operationSource, phone, selectedCard, selectedMachineId, selectedMachine, amount, commation, type, machineOperationType, delegateName, cash, shop, showToast]);
+  }, [operationSource, phone, selectedCard, selectedMachineId, selectedMachine, amount, commation, type, machineOperationType, delegateName, cash, shop, showToast, isCredit, debtorName, debtorPhone]);
 
   const prepareConfirmDetails = useCallback(() => {
     const amountNum = Number(amount);
@@ -384,26 +415,170 @@ function OperationsPageContent() {
             currentWithdrawLimit -= amountNum;
           }
 
-          await addDoc(collection(db, 'operations'), {
-            source: 'line',
-            phone,
-            name,
-            amount: amountNum,
-            commation: commationNum,
-            shop,
-            type,
-            date: new Date().toISOString(),
-            amountBefore: cardData.amount,
-            closed: false
-          });
-
+          // Update card balance
           await updateDoc(cardRef, {
             amount: currentAmount,
             depositLimit: currentDepositLimit,
             withdrawLimit: currentWithdrawLimit
           });
 
-          // تحديث رصيد النقدي
+          // Handle credit vs cash operations
+          if (isCredit) {
+            // Credit operation: DO NOT change cash, create receivable
+            const creditAmount = amountNum + commationNum;
+            const transactionDate = new Date();
+            const dateString = transactionDate.toISOString().split('T')[0];
+            
+            // Create operation with credit fields
+            const operationRef = await addDoc(collection(db, 'operations'), {
+              source: 'line',
+              phone,
+              name,
+              amount: amountNum,
+              commation: commationNum,
+              shop,
+              type,
+              date: transactionDate.toISOString(),
+              dateString: dateString,
+              amountBefore: cardData.amount,
+              closed: false,
+              // Credit fields
+              isCredit: true,
+              creditStatus: 'pending',
+              debtorName: debtorName.trim(),
+              debtorPhone: debtorPhone.trim(),
+              creditAmount: creditAmount,
+              creditPaid: 0,
+              creditRemaining: creditAmount,
+              dueDate: dueDate || null
+            });
+
+            // Create receivable record
+            // الدين = المبلغ فقط (بدون العمولة)
+            await addDoc(collection(db, 'receivables'), {
+              operationId: operationRef.id,
+              debtorName: debtorName.trim(),
+              debtorPhone: debtorPhone.trim(),
+              totalAmount: amountNum,  // المبلغ فقط (بدون العمولة)
+              paidAmount: 0,
+              remainingAmount: amountNum,  // المبلغ فقط
+              status: 'pending',
+              source: 'line',
+              shop,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          } else {
+            // Cash operation: update cash (existing logic)
+            let cashRef;
+            let currentCashAmount = 0;
+
+            if (!cash || !cash.id) {
+              const newCashDoc = await addDoc(collection(db, 'cash'), {
+                shop,
+                amount: 0,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              });
+              cashRef = doc(db, 'cash', newCashDoc.id);
+            } else {
+              cashRef = doc(db, 'cash', cash.id);
+              currentCashAmount = Number(cash.amount || 0);
+            }
+
+            // حساب الرصيد الجديد
+            let newCashAmount = currentCashAmount;
+            if (type === 'ارسال') {
+              newCashAmount = currentCashAmount + amountNum;
+            } else if (type === 'استلام') {
+              newCashAmount = currentCashAmount - amountNum;
+              if (newCashAmount < 0) {
+                showToast("رصيد النقدي غير كافي", "error");
+                setIsProcessing(false);
+                return;
+              }
+            }
+
+            await updateDoc(cashRef, {
+              amount: newCashAmount,
+              updatedAt: new Date()
+            });
+
+            // Create operation (existing logic)
+            await addDoc(collection(db, 'operations'), {
+              source: 'line',
+              phone,
+              name,
+              amount: amountNum,
+              commation: commationNum,
+              shop,
+              type,
+              date: new Date().toISOString(),
+              amountBefore: cardData.amount,
+              closed: false
+            });
+          }
+
+          // Reset form
+          setPhone('');
+          setAmount('');
+          setCommation('');
+          setName('');
+          setIsCredit(false);
+          setDebtorName('');
+          setDebtorPhone('');
+          setDueDate('');
+          setShowForm(false);
+          showToast("تم تنفيذ العملية بنجاح", "success");
+        }
+      } else if (operationSource === 'machine') {
+        // Machine operation logic - نفس طريقة عمليات الخطوط
+        const commissionNum = machineOperationType === 'deposit' ? 0 : Number(commation);
+        
+        if (!selectedMachine) {
+          showToast('الماكينة غير موجودة', 'error');
+          setIsProcessing(false);
+          return;
+        }
+
+        const machineRef = doc(db, 'machines', selectedMachineId);
+        
+        // قراءة الماكينة مباشرة (مثل عمليات الخطوط)
+        const machineSnap = await getDoc(machineRef);
+        
+        if (!machineSnap.exists()) {
+          showToast('الماكينة غير موجودة', 'error');
+          setIsProcessing(false);
+          return;
+        }
+
+        const machineData = machineSnap.data();
+        const currentBalance = Number(machineData.balance || 0);
+        const balanceBefore = currentBalance;
+
+        // حساب الرصيد الجديد
+        let newBalance = currentBalance;
+        
+        if (machineOperationType === 'deposit') {
+          newBalance = currentBalance + amountNum;
+        } else {
+          newBalance = currentBalance - amountNum;
+          if (newBalance < 0) {
+            showToast('رصيد الماكينة غير كافي', 'error');
+            setIsProcessing(false);
+            return;
+          }
+        }
+
+        const balanceAfter = newBalance;
+
+        // تحديث رصيد الماكينة مباشرة (مثل عمليات الخطوط)
+        await updateDoc(machineRef, {
+          balance: newBalance
+        });
+
+        // التعامل مع النقدي (مثل عمليات الخطوط)
+        if (!isCredit || machineOperationType === 'deposit') {
           let cashRef;
           let currentCashAmount = 0;
 
@@ -420,141 +595,104 @@ function OperationsPageContent() {
             currentCashAmount = Number(cash.amount || 0);
           }
 
-          // حساب الرصيد الجديد
           let newCashAmount = currentCashAmount;
-          if (type === 'ارسال') {
-            newCashAmount = currentCashAmount + amountNum;
-          } else if (type === 'استلام') {
+          
+          if (machineOperationType === 'deposit') {
             newCashAmount = currentCashAmount - amountNum;
             if (newCashAmount < 0) {
               showToast("رصيد النقدي غير كافي", "error");
               setIsProcessing(false);
               return;
             }
+          } else {
+            // Other operations: cash increases
+            newCashAmount = currentCashAmount + amountNum;
           }
 
           await updateDoc(cashRef, {
             amount: newCashAmount,
             updatedAt: new Date()
           });
-
-          setPhone('');
-          setAmount('');
-          setCommation('');
-          setName('');
-          setShowForm(false);
-          showToast("تم تنفيذ العملية بنجاح", "success");
-        }
-      } else if (operationSource === 'machine') {
-        // Machine operation logic
-        const commissionNum = machineOperationType === 'deposit' ? 0 : Number(commation);
-        
-        // Use data from state instead of reading from Firestore
-        if (!selectedMachine) {
-          showToast('الماكينة غير موجودة', 'error');
-          setIsProcessing(false);
-          return;
         }
 
-        const machineRef = doc(db, 'machines', selectedMachineId);
-        
-        // Get cash reference - use existing cash from state if available
-        let cashRef;
-        if (!cash || !cash.id) {
-          // Only create if it doesn't exist
-          const newCashDoc = await addDoc(collection(db, 'cash'), {
-            shop,
-            amount: 0,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-          cashRef = doc(db, 'cash', newCashDoc.id);
-        } else {
-          cashRef = doc(db, 'cash', cash.id);
-        }
-
-        // Use transaction for atomic updates - read everything inside transaction
-        // Store balance values from transaction to use when creating transaction record
-        let balanceBefore = 0;
-        let balanceAfter = 0;
-        
-        await runTransaction(db, async (transaction) => {
-          // Read documents inside transaction only
-          const machineSnapTrans = await transaction.get(machineRef);
-          const cashSnapTrans = await transaction.get(cashRef);
-
-          if (!machineSnapTrans.exists()) {
-            throw new Error('الماكينة غير موجودة');
-          }
-
-          const machineDataTrans = machineSnapTrans.data();
-          const currentBalanceTrans = Number(machineDataTrans.balance || 0);
-          const currentCashTrans = Number(cashSnapTrans.data()?.amount || 0);
-
-          // Store balance before for transaction record
-          balanceBefore = currentBalanceTrans;
-
-          let newBalance = currentBalanceTrans;
-          let newCash = currentCashTrans;
-
-          if (machineOperationType === 'deposit') {
-            // Deposit: machine balance increases, cash decreases
-            newBalance = currentBalanceTrans + amountNum;
-            newCash = currentCashTrans - amountNum;
-
-            if (newCash < 0) {
-              throw new Error('رصيد النقدي غير كافي');
-            }
-          } else {
-            // Other operations: machine balance decreases, cash increases
-            newBalance = currentBalanceTrans - amountNum;
-            newCash = currentCashTrans + amountNum;
-
-            if (newBalance < 0) {
-              throw new Error('رصيد الماكينة غير كافي');
-            }
-          }
-
-          // Store balance after for transaction record
-          balanceAfter = newBalance;
-
-          // Update machine balance
-          transaction.update(machineRef, {
-            balance: newBalance
-          });
-
-          // Update cash
-          transaction.update(cashRef, {
-            amount: newCash,
-            updatedAt: new Date()
-          });
-        });
-
-        // Create transaction record in operations collection
+        // إنشاء سجل العملية
         const transactionDate = new Date();
         const dateString = transactionDate.toISOString().split('T')[0];
-        await addDoc(collection(db, 'operations'), {
-          source: 'machine',
-          phone: selectedMachine.code,
-          name: machineOperationType === 'deposit' ? delegateName.trim() : selectedMachine.name,
-          amount: amountNum,
-          commation: commissionNum,
-          type: machineOperationType,
-          date: transactionDate.toISOString(),
-          dateString: dateString,
-          amountBefore: balanceBefore,
-          shop,
-          machineCode: selectedMachine.code,
-          machineName: selectedMachine.name,
-          balanceAfter: balanceAfter,
-          closed: false
-        });
+        
+        if (isCredit && machineOperationType !== 'deposit') {
+          // Credit operation: create operation with credit fields and receivable
+          const creditAmount = amountNum + commissionNum;
+          
+          const operationRef = await addDoc(collection(db, 'operations'), {
+            source: 'machine',
+            phone: selectedMachine.code,
+            name: selectedMachine.name,
+            amount: amountNum,
+            commation: commissionNum,
+            type: machineOperationType,
+            date: transactionDate.toISOString(),
+            dateString: dateString,
+            amountBefore: balanceBefore,
+            shop,
+            machineCode: selectedMachine.code,
+            machineName: selectedMachine.name,
+            balanceAfter: balanceAfter,
+            closed: false,
+            // Credit fields
+            isCredit: true,
+            creditStatus: 'pending',
+            debtorName: debtorName.trim(),
+            debtorPhone: debtorPhone.trim(),
+            creditAmount: creditAmount,
+            creditPaid: 0,
+            creditRemaining: creditAmount,
+            dueDate: dueDate || null
+          });
+
+          // Create receivable record
+          // الدين = المبلغ فقط (بدون العمولة)
+          await addDoc(collection(db, 'receivables'), {
+            operationId: operationRef.id,
+            debtorName: debtorName.trim(),
+            debtorPhone: debtorPhone.trim(),
+            totalAmount: amountNum,  // المبلغ فقط (بدون العمولة)
+            paidAmount: 0,
+            remainingAmount: amountNum,  // المبلغ فقط
+            status: 'pending',
+            source: 'machine',
+            shop,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Cash operation: create operation normally
+          await addDoc(collection(db, 'operations'), {
+            source: 'machine',
+            phone: selectedMachine.code,
+            name: machineOperationType === 'deposit' ? delegateName.trim() : selectedMachine.name,
+            amount: amountNum,
+            commation: commissionNum,
+            type: machineOperationType,
+            date: transactionDate.toISOString(),
+            dateString: dateString,
+            amountBefore: balanceBefore,
+            shop,
+            machineCode: selectedMachine.code,
+            machineName: selectedMachine.name,
+            balanceAfter: balanceAfter,
+            closed: false
+          });
+        }
 
         // Reset form
         setSelectedMachineId('');
         setAmount('');
         setCommation('');
         setDelegateName('');
+        setIsCredit(false);
+        setDebtorName('');
+        setDebtorPhone('');
+        setDueDate('');
         setShowForm(false);
         showToast('تم تنفيذ العملية بنجاح', 'success');
       }
@@ -564,7 +702,7 @@ function OperationsPageContent() {
     } finally {
       setIsProcessing(false);
     }
-  }, [operationSource, phone, selectedMachineId, selectedMachine, amount, commation, name, type, machineOperationType, delegateName, shop, cash, isProcessing, showToast]);
+  }, [operationSource, phone, selectedMachineId, selectedMachine, amount, commation, name, type, machineOperationType, delegateName, shop, cash, isProcessing, showToast, isCredit, debtorName, debtorPhone, dueDate]);
 
   const handleDeleteOperation = useCallback(async (id) => {
     if (isDeleting) return;
@@ -584,6 +722,22 @@ function OperationsPageContent() {
       const operation = operationSnap.data();
       const operationSource = operation.source || 'line';
       const operationAmount = Number(operation.amount);
+      const isCredit = operation.isCredit === true;
+
+      // If credit operation, delete receivable first
+      if (isCredit && operation.creditStatus === 'pending') {
+        // Find and delete the associated receivable
+        const receivablesQuery = query(
+          collection(db, 'receivables'),
+          where('operationId', '==', id)
+        );
+        const receivablesSnap = await getDocs(receivablesQuery);
+        
+        if (!receivablesSnap.empty) {
+          const receivableRef = doc(db, 'receivables', receivablesSnap.docs[0].id);
+          await deleteDoc(receivableRef);
+        }
+      }
 
       if (operationSource === 'machine') {
         // Handle machine operation deletion
@@ -642,12 +796,19 @@ function OperationsPageContent() {
             return;
           }
         } else {
-          // Reverse other operations: increase machine balance, decrease cash
-          newBalance = currentBalance + operationAmount;
-          newCash = currentCashAmount - operationAmount;
-          if (newCash < 0) {
-            showToast("لا يمكن حذف العملية لأن ذلك سيؤدي إلى رصيد نقدي سالب", "error");
-            return;
+          // Reverse other operations
+          if (isCredit) {
+            // Credit operation: only restore machine balance, cash doesn't change
+            newBalance = currentBalance + operationAmount;
+            // newCash stays the same
+          } else {
+            // Cash operation: increase machine balance, decrease cash
+            newBalance = currentBalance + operationAmount;
+            newCash = currentCashAmount - operationAmount;
+            if (newCash < 0) {
+              showToast("لا يمكن حذف العملية لأن ذلك سيؤدي إلى رصيد نقدي سالب", "error");
+              return;
+            }
           }
         }
 
@@ -663,10 +824,13 @@ function OperationsPageContent() {
             balance: newBalance
           });
 
-          transaction.update(cashRef, {
-            amount: newCash,
-            updatedAt: new Date()
-          });
+          // Update cash only if NOT credit operation
+          if (!isCredit || operation.type === 'deposit') {
+            transaction.update(cashRef, {
+              amount: newCash,
+              updatedAt: new Date()
+            });
+          }
         });
 
         await deleteDoc(operationRef);
@@ -711,33 +875,35 @@ function OperationsPageContent() {
           depositLimit: newDepositLimit
         });
 
-        // تحديث رصيد النقدي (عكس العملية)
-        const cashQuery = query(collection(db, 'cash'), where('shop', '==', shop));
-        const cashSnapshot = await getDocs(cashQuery);
+        // تحديث رصيد النقدي (عكس العملية) - فقط إذا لم تكن عملية أجل
+        if (!isCredit) {
+          const cashQuery = query(collection(db, 'cash'), where('shop', '==', shop));
+          const cashSnapshot = await getDocs(cashQuery);
 
-        if (!cashSnapshot.empty) {
-          const cashRef = doc(db, 'cash', cashSnapshot.docs[0].id);
-          const currentCashAmount = Number(cashSnapshot.docs[0].data().amount || 0);
-          
-          let newCashAmount = currentCashAmount;
-          if (operation.type === 'ارسال') {
-            // حذف عملية إرسال: تقليل النقدي (إرجاع المبلغ)
-            newCashAmount = currentCashAmount - operationAmount;
-            if (newCashAmount < 0) {
-              showToast("لا يمكن حذف العملية لأن ذلك سيؤدي إلى رصيد نقدي سالب", "error");
-              setIsDeleting(false);
-              setDeletingOperationId(null);
-              return;
+          if (!cashSnapshot.empty) {
+            const cashRef = doc(db, 'cash', cashSnapshot.docs[0].id);
+            const currentCashAmount = Number(cashSnapshot.docs[0].data().amount || 0);
+            
+            let newCashAmount = currentCashAmount;
+            if (operation.type === 'ارسال') {
+              // حذف عملية إرسال: تقليل النقدي (إرجاع المبلغ)
+              newCashAmount = currentCashAmount - operationAmount;
+              if (newCashAmount < 0) {
+                showToast("لا يمكن حذف العملية لأن ذلك سيؤدي إلى رصيد نقدي سالب", "error");
+                setIsDeleting(false);
+                setDeletingOperationId(null);
+                return;
+              }
+            } else if (operation.type === 'استلام') {
+              // حذف عملية استلام: زيادة النقدي (إرجاع المبلغ)
+              newCashAmount = currentCashAmount + operationAmount;
             }
-          } else if (operation.type === 'استلام') {
-            // حذف عملية استلام: زيادة النقدي (إرجاع المبلغ)
-            newCashAmount = currentCashAmount + operationAmount;
+            
+            await updateDoc(cashRef, {
+              amount: newCashAmount,
+              updatedAt: new Date()
+            });
           }
-          
-          await updateDoc(cashRef, {
-            amount: newCashAmount,
-            updatedAt: new Date()
-          });
         }
 
         await deleteDoc(operationRef);
@@ -884,6 +1050,10 @@ function OperationsPageContent() {
       setDelegateName('');
       setOperationSource('line');
       setMachineOperationType('deposit');
+      setIsCredit(false);
+      setDebtorName('');
+      setDebtorPhone('');
+      setDueDate('');
     }
     setShowForm(!showForm);
   };
@@ -1061,22 +1231,97 @@ function OperationsPageContent() {
 
             <div className={styles.formSection}>
               {operationSource === 'line' ? (
-                <OperationForm
-                  type={type}
-                  onTypeChange={setType}
-                  phone={phone}
-                  onPhoneChange={handlePhoneChange}
-                  name={name}
-                  onNameChange={setName}
-                  amount={amount}
-                  onAmountChange={setAmount}
-                  commation={commation}
-                  onCommationChange={setCommation}
-                  selectedCard={selectedCard}
-                  isProcessing={isProcessing}
-                  onSubmit={handleSubmitClick}
-                  onCloseDay={handleCloseDay}
-                />
+                <>
+                  <OperationForm
+                    type={type}
+                    onTypeChange={setType}
+                    phone={phone}
+                    onPhoneChange={handlePhoneChange}
+                    name={name}
+                    onNameChange={setName}
+                    amount={amount}
+                    onAmountChange={setAmount}
+                    commation={commation}
+                    onCommationChange={setCommation}
+                    selectedCard={selectedCard}
+                    isProcessing={isProcessing}
+                    onSubmit={handleSubmitClick}
+                    onCloseDay={handleCloseDay}
+                  />
+                  
+                  {/* Credit Operation Toggle and Fields for Line Operations */}
+                  <div className={styles.creditSection}>
+                    <div className={styles.inputGroup}>
+                      <label className={styles.toggleLabel}>
+                        <input
+                          type="checkbox"
+                          checked={isCredit}
+                          onChange={(e) => {
+                            setIsCredit(e.target.checked);
+                            if (!e.target.checked) {
+                              setDebtorName('');
+                              setDebtorPhone('');
+                              setDueDate('');
+                            }
+                          }}
+                          disabled={isProcessing}
+                          className={styles.toggleInput}
+                        />
+                        <span className={styles.toggleText}>عملية أجل</span>
+                      </label>
+                    </div>
+
+                    {isCredit && (
+                      <div className={styles.creditFields}>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbUser className={styles.inputIcon} />
+                            اسم المدين:
+                          </label>
+                          <input
+                            type="text"
+                            value={debtorName}
+                            onChange={(e) => setDebtorName(e.target.value)}
+                            placeholder="اسم المدين"
+                            disabled={isProcessing}
+                            dir="rtl"
+                            className={styles.textInput}
+                            required
+                          />
+                        </div>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbPhone className={styles.inputIcon} />
+                            رقم المدين:
+                          </label>
+                          <input
+                            type="text"
+                            value={debtorPhone}
+                            onChange={(e) => setDebtorPhone(e.target.value)}
+                            placeholder="رقم المدين"
+                            disabled={isProcessing}
+                            dir="ltr"
+                            className={styles.textInput}
+                            required
+                          />
+                        </div>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbCalendar className={styles.inputIcon} />
+                            تاريخ الاستحقاق:
+                          </label>
+                          <input
+                            type="date"
+                            value={dueDate}
+                            onChange={(e) => setDueDate(e.target.value)}
+                            disabled={isProcessing}
+                            className={styles.dateInput}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
               ) : (
                 <div className={styles.machineForm}>
                   <div className={styles.formHeader}>
@@ -1128,11 +1373,86 @@ function OperationsPageContent() {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Credit Operation Toggle and Fields */}
+                    <div className={styles.inputGroup}>
+                      <label className={styles.toggleLabel}>
+                        <input
+                          type="checkbox"
+                          checked={isCredit}
+                          onChange={(e) => {
+                            setIsCredit(e.target.checked);
+                            if (!e.target.checked) {
+                              setDebtorName('');
+                              setDebtorPhone('');
+                              setDueDate('');
+                            }
+                          }}
+                          disabled={isProcessing || machineOperationType === 'deposit'}
+                          className={styles.toggleInput}
+                        />
+                        <span className={styles.toggleText}>عملية أجل</span>
+                        {machineOperationType === 'deposit' && (
+                          <span className={styles.toggleHint}>(لا يمكن عمل إيداع بالأجل)</span>
+                        )}
+                      </label>
+                    </div>
+
+                    {isCredit && machineOperationType !== 'deposit' && (
+                      <div className={styles.creditFields}>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbUser className={styles.inputIcon} />
+                            اسم المدين:
+                          </label>
+                          <input
+                            type="text"
+                            value={debtorName}
+                            onChange={(e) => setDebtorName(e.target.value)}
+                            placeholder="اسم المدين"
+                            disabled={isProcessing}
+                            dir="rtl"
+                            className={styles.textInput}
+                            required
+                          />
+                        </div>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbPhone className={styles.inputIcon} />
+                            رقم المدين:
+                          </label>
+                          <input
+                            type="text"
+                            value={debtorPhone}
+                            onChange={(e) => setDebtorPhone(e.target.value)}
+                            placeholder="رقم المدين"
+                            disabled={isProcessing}
+                            dir="ltr"
+                            className={styles.textInput}
+                            required
+                          />
+                        </div>
+                        <div className={styles.inputGroup}>
+                          <label className={styles.inputLabel}>
+                            <TbCalendar className={styles.inputIcon} />
+                            تاريخ الاستحقاق:
+                          </label>
+                          <input
+                            type="date"
+                            value={dueDate}
+                            onChange={(e) => setDueDate(e.target.value)}
+                            disabled={isProcessing}
+                            className={styles.dateInput}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className={styles.formActions}>
                       <button
                         onClick={handleSubmitClick}
                         className={styles.submitButton}
-                        disabled={isProcessing || !selectedMachineId || amount === ''}
+                        disabled={isProcessing || !selectedMachineId || amount === '' || (isCredit && (!debtorName || !debtorPhone))}
                       >
                         {isProcessing ? 'جاري التنفيذ...' : 'تنفيذ العملية'}
                       </button>

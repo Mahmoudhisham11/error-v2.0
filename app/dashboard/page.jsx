@@ -22,6 +22,7 @@ function DashboardPageContent() {
   const [reports, setReports] = useState([]);
   const [cash, setCash] = useState(null);
   const [machines, setMachines] = useState([]);
+  const [receivables, setReceivables] = useState([]);
   const [shop, setShop] = useState('');
   const [showCashModal, setShowCashModal] = useState(false);
   const [isEditingCash, setIsEditingCash] = useState(false);
@@ -123,12 +124,26 @@ function DashboardPageContent() {
         setMachines(machinesArray);
       });
 
+      // Subscribe to receivables
+      const receivablesQ = query(
+        collection(db, 'receivables'),
+        where('shop', '==', storageShop)
+      );
+      const unsubscribeReceivables = onSnapshot(receivablesQ, (snapshot) => {
+        const receivablesArray = [];
+        snapshot.forEach((doc) => {
+          receivablesArray.push({ ...doc.data(), id: doc.id });
+        });
+        setReceivables(receivablesArray);
+      });
+
       return () => {
         unsubscribeOps();
         unsubscribeCards();
         unsubscribeReports();
         unsubscribeCash();
         unsubscribeMachines();
+        unsubscribeReceivables();
       };
     }
   }, []);
@@ -184,35 +199,7 @@ function DashboardPageContent() {
     });
   }, [cards]);
 
-  // Calculate new stats
-  const stats = useMemo(() => {
-    const totalCardsAmount = cards.reduce((acc, card) => acc + Number(card.amount || 0), 0);
-    const cashAmount = cash?.amount || 0;
-    const totalMachineBalances = machines.reduce((acc, m) => acc + Number(m.balance || 0), 0);
-    const capital = totalCardsAmount + cashAmount + totalMachineBalances;
-    const totalWallets = totalCardsAmount;
-    
-    // Calculate profit from operations (line + machine) - today only
-    // Filter closed operations in JavaScript to support old operations without 'closed' field
-    const today = new Date().toISOString().split('T')[0];
-    const todayOps = operations.filter(op => {
-      // Only include unclosed operations
-      if (op.closed === true) return false;
-      const opDate = op.dateString || new Date(op.date).toISOString().split('T')[0];
-      return opDate === today;
-    });
-    const totalProfit = todayOps.reduce((acc, op) => acc + Number(op.commation || 0), 0);
-
-    return {
-      capital,
-      totalCash: cashAmount,
-      totalWallets,
-      totalProfit,
-      totalMachineBalances
-    };
-  }, [cards, cash, machines, operations]);
-
-  // Calculate profit and expenses from reports
+  // Calculate profit and expenses from reports (must be before stats useMemo)
   const totalProfitFromReports = useMemo(() => {
     return reports.reduce((acc, r) => acc + Number(r.commation || 0), 0);
   }, [reports]);
@@ -224,6 +211,72 @@ function DashboardPageContent() {
   const netProfitFromReports = useMemo(() => {
     return totalProfitFromReports - totalExpensesFromReports;
   }, [totalProfitFromReports, totalExpensesFromReports]);
+
+  // Calculate new stats
+  const stats = useMemo(() => {
+    const totalCardsAmount = cards.reduce((acc, card) => acc + Number(card.amount || 0), 0);
+    const cashAmount = cash?.amount || 0;
+    const totalMachineBalances = machines.reduce((acc, m) => acc + Number(m.balance || 0), 0);
+    const totalWallets = totalCardsAmount;
+    
+    // Calculate capital including net profit from reports
+    const capital = totalCardsAmount + cashAmount + totalMachineBalances + netProfitFromReports;
+    
+    // Calculate profit from operations (line + machine) - today only
+    // Filter closed operations in JavaScript to support old operations without 'closed' field
+    const today = new Date().toISOString().split('T')[0];
+    const todayOps = operations.filter(op => {
+      // Only include unclosed operations
+      if (op.closed === true) return false;
+      const opDate = op.dateString || new Date(op.date).toISOString().split('T')[0];
+      return opDate === today;
+    });
+    const totalProfit = todayOps
+      .filter(op => {
+        // استبعاد عمليات الأجل غير المدفوعة بالكامل
+        if (op.isCredit === true && op.creditStatus !== 'paid') {
+          return false;
+        }
+        return true;
+      })
+      .reduce((acc, op) => acc + Number(op.commation || 0), 0);
+
+    return {
+      capital,
+      totalCash: cashAmount,
+      totalWallets,
+      totalProfit,
+      totalMachineBalances
+    };
+  }, [cards, cash, machines, operations, netProfitFromReports]);
+
+  // Calculate receivables stats
+  const receivablesStats = useMemo(() => {
+    const pendingReceivables = receivables.filter(r => r.status === 'pending');
+    const totalReceivables = pendingReceivables.reduce((acc, r) => acc + Number(r.remainingAmount || 0), 0);
+    
+    // Calculate today's collected amount
+    const today = new Date().toISOString().split('T')[0];
+    const todayCollected = receivables
+      .filter(r => {
+        const updatedDate = r.updatedAt?.toDate ? r.updatedAt.toDate() : new Date(r.updatedAt);
+        if (!updatedDate) return false;
+        return updatedDate.toISOString().split('T')[0] === today && r.paidAmount > 0;
+      })
+      .reduce((acc, r) => {
+        // Calculate how much was collected today (approximate - this is a simplified calculation)
+        // In a real scenario, you might want to track collection history separately
+        return acc + Number(r.paidAmount || 0);
+      }, 0);
+    
+    const remainingReceivables = totalReceivables;
+    
+    return {
+      totalReceivables,
+      todayCollected,
+      remainingReceivables
+    };
+  }, [receivables]);
 
   // Filter expenses by date
   const filteredExpensesReports = useMemo(() => {
@@ -414,6 +467,27 @@ function DashboardPageContent() {
             value={`${netProfitFromReports.toLocaleString('en-US')} جنيه`}
             icon={<TbMoneybag />}
             color={netProfitFromReports >= 0 ? "success" : "danger"}
+          />
+        </div>
+
+        <div className={styles.statsGrid}>
+          <StatCard
+            title="إجمالي الذمم القائمة"
+            value={`${receivablesStats.totalReceivables.toLocaleString('en-US')} جنيه`}
+            icon={<TbReceipt />}
+            color="warning"
+          />
+          <StatCard
+            title="المحصل اليوم"
+            value={`${receivablesStats.todayCollected.toLocaleString('en-US')} جنيه`}
+            icon={<TbTrendingUp />}
+            color="success"
+          />
+          <StatCard
+            title="المتبقي من الذمم"
+            value={`${receivablesStats.remainingReceivables.toLocaleString('en-US')} جنيه`}
+            icon={<TbMoneybag />}
+            color="info"
           />
         </div>
 
