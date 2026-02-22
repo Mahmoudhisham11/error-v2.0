@@ -45,11 +45,10 @@ function DashboardPageContent() {
       setShop(storageShop);
 
       // Subscribe to operations (including both line and machine operations)
-      // Using '== false' instead of '!= true' to avoid index requirement
+      // Note: We filter closed operations in JavaScript to support old operations without 'closed' field
       const operationsQ = query(
         collection(db, 'operations'),
-        where('shop', '==', storageShop),
-        where('closed', '==', false)
+        where('shop', '==', storageShop)
       );
       const unsubscribeOps = onSnapshot(operationsQ, (snapshot) => {
         const ops = [];
@@ -194,8 +193,11 @@ function DashboardPageContent() {
     const totalWallets = totalCardsAmount;
     
     // Calculate profit from operations (line + machine) - today only
+    // Filter closed operations in JavaScript to support old operations without 'closed' field
     const today = new Date().toISOString().split('T')[0];
     const todayOps = operations.filter(op => {
+      // Only include unclosed operations
+      if (op.closed === true) return false;
       const opDate = op.dateString || new Date(op.date).toISOString().split('T')[0];
       return opDate === today;
     });

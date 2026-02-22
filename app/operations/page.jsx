@@ -83,12 +83,11 @@ function OperationsPageContent() {
         }
       });
 
-      // Query operations including both line and machine operations (unclosed only)
-      // Using '== false' instead of '!= true' to avoid index requirement
+      // Query operations including both line and machine operations
+      // Note: We filter closed operations in JavaScript to support old operations without 'closed' field
       const operationsQ = query(
         collection(db, 'operations'),
-        where('shop', '==', storageShop),
-        where('closed', '==', false)
+        where('shop', '==', storageShop)
       );
       const unsubscribeOper = onSnapshot(operationsQ, (querySnapshot) => {
         const operationsArray = [];
@@ -132,7 +131,7 @@ function OperationsPageContent() {
 
   const totalProfit = useMemo(() => {
     return operations
-      .filter(op => !op.closed)
+      .filter(op => !op.closed || op.closed === false)  // Support old operations without 'closed' field
       .reduce((acc, op) => acc + Number(op.commation || 0), 0);
   }, [operations]);
 
@@ -765,14 +764,20 @@ function OperationsPageContent() {
 
     try {
       // نقل جميع العمليات (line + machine) إلى reports
+      // Note: We filter closed operations in JavaScript to support old operations without 'closed' field
       const operationsQuery = query(
         collection(db, "operations"),
-        where('shop', '==', shop),
-        where('closed', '==', false)
+        where('shop', '==', shop)
       );
       const operationsSnapshot = await getDocs(operationsQuery);
+      
+      // Filter unclosed operations (supports old operations without 'closed' field)
+      const unclosedOps = operationsSnapshot.docs.filter(doc => {
+        const data = doc.data();
+        return !data.closed || data.closed === false;
+      });
 
-      const addOperationsToReports = operationsSnapshot.docs.map((docSnap) => {
+      const addOperationsToReports = unclosedOps.map((docSnap) => {
         const data = docSnap.data();
         return addDoc(collection(db, "reports"), {
           ...data,
@@ -780,7 +785,7 @@ function OperationsPageContent() {
         });
       });
 
-      const deleteOperations = operationsSnapshot.docs.map((docSnap) =>
+      const deleteOperations = unclosedOps.map((docSnap) =>
         deleteDoc(doc(db, "operations", docSnap.id))
       );
 
@@ -858,8 +863,9 @@ function OperationsPageContent() {
 
   const allOperations = useMemo(() => {
     // All operations (line + machine) are now in operations collection
+    // Filter closed operations in JavaScript to support old operations without 'closed' field
     return operations
-      .filter(op => !op.closed)  // Only unclosed operations
+      .filter(op => !op.closed || op.closed === false)  // Only unclosed operations (supports old operations)
       .map(op => ({
         ...op,
         source: op.source || 'line'  // Default to 'line' for backward compatibility
