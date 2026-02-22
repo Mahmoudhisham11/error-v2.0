@@ -7,9 +7,9 @@ import EmptyState from '@/components/ui/EmptyState/EmptyState';
 import ConfirmModal from '@/components/ui/ConfirmModal/ConfirmModal';
 import SafeButton from '@/components/ui/SafeButton/SafeButton';
 import { useToast } from '@/components/ui/Toast/ToastProvider';
-import { TbMoneybag, TbReceipt, TbPhone, TbAlertTriangle, TbWallet, TbTrendingUp, TbEdit, TbTrash, TbPlus } from 'react-icons/tb';
+import { TbMoneybag, TbReceipt, TbPhone, TbAlertTriangle, TbWallet, TbTrendingUp, TbEdit, TbTrash, TbPlus, TbSearch, TbCalendar, TbDeviceDesktop } from 'react-icons/tb';
 import { HiMenu, HiX } from 'react-icons/hi';
-import { collection, onSnapshot, query, where, addDoc, updateDoc, doc, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, updateDoc, doc, getDocs, deleteDoc, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import styles from './styles.module.css';
 
@@ -21,6 +21,7 @@ function DashboardPageContent() {
   const [cards, setCards] = useState([]);
   const [reports, setReports] = useState([]);
   const [cash, setCash] = useState(null);
+  const [machines, setMachines] = useState([]);
   const [shop, setShop] = useState('');
   const [showCashModal, setShowCashModal] = useState(false);
   const [isEditingCash, setIsEditingCash] = useState(false);
@@ -28,6 +29,11 @@ function DashboardPageContent() {
   const [deleteReportsConfirm, setDeleteReportsConfirm] = useState(false);
   const [isDeletingReports, setIsDeletingReports] = useState(false);
   const [isSavingCash, setIsSavingCash] = useState(false);
+  const [expensesReports, setExpensesReports] = useState([]);
+  const [searchDate, setSearchDate] = useState('');
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [deleteExpensesConfirm, setDeleteExpensesConfirm] = useState(false);
+  const [isDeletingExpenses, setIsDeletingExpenses] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -38,10 +44,12 @@ function DashboardPageContent() {
       }
       setShop(storageShop);
 
-      // Subscribe to operations
+      // Subscribe to operations (including both line and machine operations)
+      // Using '== false' instead of '!= true' to avoid index requirement
       const operationsQ = query(
         collection(db, 'operations'),
-        where('shop', '==', storageShop)
+        where('shop', '==', storageShop),
+        where('closed', '==', false)
       );
       const unsubscribeOps = onSnapshot(operationsQ, (snapshot) => {
         const ops = [];
@@ -103,14 +111,51 @@ function DashboardPageContent() {
         }
       });
 
+      // Subscribe to machines
+      const machinesQ = query(
+        collection(db, 'machines'),
+        where('shop', '==', storageShop)
+      );
+      const unsubscribeMachines = onSnapshot(machinesQ, (snapshot) => {
+        const machinesArray = [];
+        snapshot.forEach((doc) => {
+          machinesArray.push({ ...doc.data(), id: doc.id });
+        });
+        setMachines(machinesArray);
+      });
+
       return () => {
         unsubscribeOps();
         unsubscribeCards();
         unsubscribeReports();
         unsubscribeCash();
+        unsubscribeMachines();
       };
     }
   }, []);
+
+  useEffect(() => {
+    if (shop) {
+      const expensesReportsQ = query(
+        collection(db, 'expensesReports'),
+        where('shop', '==', shop)
+      );
+      const unsubscribe = onSnapshot(expensesReportsQ, (snapshot) => {
+        const expensesArray = [];
+        snapshot.forEach((doc) => {
+          expensesArray.push({ ...doc.data(), id: doc.id });
+        });
+        // ترتيب حسب التاريخ (الأحدث أولاً)
+        expensesArray.sort((a, b) => {
+          const dateA = a.date ? new Date(a.date).getTime() : 0;
+          const dateB = b.date ? new Date(b.date).getTime() : 0;
+          return dateB - dateA;
+        });
+        setExpensesReports(expensesArray);
+      });
+      return () => unsubscribe();
+    }
+  }, [shop]);
 
   // Calculate today's stats
   const todayStats = useMemo(() => {
@@ -144,17 +189,45 @@ function DashboardPageContent() {
   const stats = useMemo(() => {
     const totalCardsAmount = cards.reduce((acc, card) => acc + Number(card.amount || 0), 0);
     const cashAmount = cash?.amount || 0;
-    const capital = totalCardsAmount + cashAmount;
+    const totalMachineBalances = machines.reduce((acc, m) => acc + Number(m.balance || 0), 0);
+    const capital = totalCardsAmount + cashAmount + totalMachineBalances;
     const totalWallets = totalCardsAmount;
-    const totalProfit = reports.reduce((acc, r) => acc + Number(r.commation || 0), 0);
+    
+    // Calculate profit from operations (line + machine) - today only
+    const today = new Date().toISOString().split('T')[0];
+    const todayOps = operations.filter(op => {
+      const opDate = op.dateString || new Date(op.date).toISOString().split('T')[0];
+      return opDate === today;
+    });
+    const totalProfit = todayOps.reduce((acc, op) => acc + Number(op.commation || 0), 0);
 
     return {
       capital,
       totalCash: cashAmount,
       totalWallets,
-      totalProfit
+      totalProfit,
+      totalMachineBalances
     };
-  }, [cards, cash, reports]);
+  }, [cards, cash, machines, operations]);
+
+  // Calculate profit and expenses from reports
+  const totalProfitFromReports = useMemo(() => {
+    return reports.reduce((acc, r) => acc + Number(r.commation || 0), 0);
+  }, [reports]);
+
+  const totalExpensesFromReports = useMemo(() => {
+    return expensesReports.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
+  }, [expensesReports]);
+
+  const netProfitFromReports = useMemo(() => {
+    return totalProfitFromReports - totalExpensesFromReports;
+  }, [totalProfitFromReports, totalExpensesFromReports]);
+
+  // Filter expenses by date
+  const filteredExpensesReports = useMemo(() => {
+    if (!searchDate) return expensesReports;
+    return expensesReports.filter(exp => exp.date === searchDate);
+  }, [expensesReports, searchDate]);
 
   // Handle cash management
   const handleAddCash = () => {
@@ -231,6 +304,27 @@ function DashboardPageContent() {
     }
   };
 
+  // Handle delete expenses
+  const handleDeleteExpenses = async () => {
+    if (!shop || isDeletingExpenses) return;
+
+    setIsDeletingExpenses(true);
+    setDeleteExpensesConfirm(false);
+
+    try {
+      const q = query(collection(db, 'expensesReports'), where('shop', '==', shop));
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      showToast('تم حذف جميع المصاريف التاريخية بنجاح', 'success');
+    } catch (error) {
+      console.error('خطأ أثناء حذف المصاريف:', error);
+      showToast('حدث خطأ أثناء حذف المصاريف', 'error');
+    } finally {
+      setIsDeletingExpenses(false);
+    }
+  };
+
   return (
     <>
       <div className={styles.pageContainer}>
@@ -293,14 +387,35 @@ function DashboardPageContent() {
             color="info"
           />
           <StatCard
-            title="الأرباح"
-            value={`${stats.totalProfit.toLocaleString('en-US')} جنيه`}
-            icon={<TbTrendingUp />}
-            color="success"
+            title="إجمالي رصيد المكينات"
+            value={`${stats.totalMachineBalances.toLocaleString('en-US')} جنيه`}
+            icon={<TbDeviceDesktop />}
+            color="primary"
           />
         </div>
 
-      {linesNearLimits.length > 0 && (
+        <div className={styles.statsGrid}>
+          <StatCard
+            title="الربح"
+            value={`${totalProfitFromReports.toLocaleString('en-US')} جنيه`}
+            icon={<TbTrendingUp />}
+            color="success"
+          />
+          <StatCard
+            title="إجمالي المصاريف"
+            value={`${totalExpensesFromReports.toLocaleString('en-US')} جنيه`}
+            icon={<TbReceipt />}
+            color="danger"
+          />
+          <StatCard
+            title="صافي الربح"
+            value={`${netProfitFromReports.toLocaleString('en-US')} جنيه`}
+            icon={<TbMoneybag />}
+            color={netProfitFromReports >= 0 ? "success" : "danger"}
+          />
+        </div>
+
+      {!showExpenses && linesNearLimits.length > 0 && (
         <div className={styles.warningSection}>
           <h2 className={styles.sectionTitle}>خطوط تحتاج إلى انتباه</h2>
           <div className={styles.linesList}>
@@ -351,6 +466,91 @@ function DashboardPageContent() {
             message="لم يتم إضافة أي خطوط بعد"
           />
         )}
+
+        {/* Expenses Reports Section */}
+        <div className={styles.expensesSection}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>المصاريف</h2>
+            <div className={styles.sectionActions}>
+              <button
+                onClick={() => setShowExpenses(!showExpenses)}
+                className={styles.toggleButton}
+              >
+                {showExpenses ? 'إخفاء المصاريف' : 'إظهار المصاريف'}
+              </button>
+              <button
+                onClick={() => setDeleteExpensesConfirm(true)}
+                className={styles.deleteButton}
+                disabled={isDeletingExpenses || expensesReports.length === 0}
+              >
+                <TbTrash /> حذف المصاريف
+              </button>
+            </div>
+          </div>
+          {showExpenses && (
+            <>
+              <div className={styles.toolbar}>
+                <div className={styles.searchContainer}>
+                  <TbCalendar className={styles.searchIcon} />
+                  <input
+                    type="date"
+                    value={searchDate}
+                    onChange={(e) => setSearchDate(e.target.value)}
+                    className={styles.searchInput}
+                    placeholder="ابحث بالتاريخ..."
+                  />
+                  {searchDate && (
+                    <button
+                      onClick={() => setSearchDate('')}
+                      className={styles.clearButton}
+                      title="مسح البحث"
+                    >
+                      <HiX />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {filteredExpensesReports.length === 0 ? (
+                <EmptyState
+                  icon={<TbReceipt />}
+                  title="لا توجد مصاريف"
+                  message={searchDate ? "لا توجد مصاريف في هذا التاريخ" : "لم يتم العثور على أي مصاريف"}
+                />
+              ) : (
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>التسلسل</th>
+                        <th>التاريخ</th>
+                        <th>المبلغ</th>
+                        <th>السبب</th>
+                        <th>تاريخ التقفيل</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredExpensesReports.map((expense, index) => (
+                        <tr key={expense.id}>
+                          <td>{index + 1}</td>
+                          <td>{expense.date || '-'}</td>
+                          <td className={styles.moneyCell}>
+                            {Number(expense.amount || 0).toLocaleString('en-US')} جنيه
+                          </td>
+                          <td>{expense.reason || '-'}</td>
+                          <td>
+                            {expense.closedAt 
+                              ? new Date(expense.closedAt).toLocaleDateString('ar-EG')
+                              : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Cash Modal */}
@@ -420,6 +620,18 @@ function DashboardPageContent() {
         type="danger"
         loading={isDeletingReports}
         disabled={isDeletingReports}
+      />
+
+      {/* Delete Expenses Confirmation */}
+      <ConfirmModal
+        isOpen={deleteExpensesConfirm}
+        onClose={() => setDeleteExpensesConfirm(false)}
+        onConfirm={handleDeleteExpenses}
+        title="حذف المصاريف التاريخية"
+        message="هل أنت متأكد من حذف جميع المصاريف التاريخية؟ لا يمكن التراجع عن هذا الإجراء."
+        type="danger"
+        loading={isDeletingExpenses}
+        disabled={isDeletingExpenses}
       />
     </>
   );

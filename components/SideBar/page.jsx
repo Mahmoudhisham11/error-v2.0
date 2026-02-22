@@ -1,7 +1,7 @@
   'use client';
   import styles from "./styles.module.css";
   import Link from "next/link";
-  import { TbMoneybag, TbReportSearch, TbLayoutDashboard, TbReceipt } from "react-icons/tb";
+  import { TbMoneybag, TbReportSearch, TbLayoutDashboard, TbReceipt, TbDeviceDesktop } from "react-icons/tb";
   import { BiMemoryCard } from "react-icons/bi";
   import { RiLogoutCircleLine, RiSettings4Line, RiQuestionAnswerLine } from "react-icons/ri";
   import { HiOutlineChevronLeft, HiX } from "react-icons/hi";
@@ -100,6 +100,13 @@
         href: '/dashboard',
         label: 'لوحة التحكم',
         icon: <TbLayoutDashboard />,
+        alwaysVisible: false
+      },
+      {
+        key: 'machines',
+        href: '/machines',
+        label: 'المكينات',
+        icon: <TbDeviceDesktop />,
         alwaysVisible: false
       },
       {

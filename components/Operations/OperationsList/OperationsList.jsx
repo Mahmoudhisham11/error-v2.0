@@ -25,27 +25,39 @@ function OperationsList({ operations, onDelete, isDeleting = false, deletingId =
           <thead>
             <tr>
               <th>التسلسل</th>
-              <th>الرقم المستخدم</th>
+              <th>المصدر</th>
+              <th>الرقم/الكود</th>
               <th>نوع العملية</th>
               <th>المبلغ</th>
               <th>العمولة</th>
               <th>صافي المبلغ</th>
-              <th>رصيد الخط</th>
-              <th>اسم العميل</th>
+              <th>الرصيد</th>
+              <th>اسم العميل/المندوب</th>
               <th>التفاعل</th>
             </tr>
           </thead>
           <tbody>
             {operations.map((operation, index) => {
-              const balance = operation.amountBefore !== undefined
-                ? (operation.type === 'استلام'
-                    ? Number(operation.amountBefore) + Number(operation.amount)
-                    : Number(operation.amountBefore) - Number(operation.amount))
-                : 0;
+              let balance = 0;
+              let netAmount = 0;
 
-              const netAmount = operation.type === "ارسال"
-                ? Number(operation.amount) + Number(operation.commation)
-                : Number(operation.amount) - Number(operation.commation);
+              if (operation.source === 'line') {
+                balance = operation.amountBefore !== undefined
+                  ? (operation.type === 'استلام'
+                      ? Number(operation.amountBefore) + Number(operation.amount)
+                      : Number(operation.amountBefore) - Number(operation.amount))
+                  : 0;
+
+                netAmount = operation.type === "ارسال"
+                  ? Number(operation.amount) + Number(operation.commation)
+                  : Number(operation.amount) - Number(operation.commation);
+              } else {
+                // Machine operation
+                balance = operation.amountBefore !== undefined
+                  ? Number(operation.amountBefore)
+                  : 0;
+                netAmount = Number(operation.amount) - Number(operation.commation || 0);
+              }
 
               return (
                 <OperationRow
@@ -83,14 +95,42 @@ function OperationsList({ operations, onDelete, isDeleting = false, deletingId =
 
 const OperationRow = memo(function OperationRow({ operation, index, balance, netAmount, onDelete, isDeleting = false, disabled = false }) {
   const isSend = operation.type === 'ارسال';
+  const isMachine = operation.source === 'machine';
+  
+  // Convert machine operation type to Arabic
+  const getMachineTypeLabel = (type) => {
+    const typeMap = {
+      'deposit': 'إيداع',
+      'withdraw': 'سحب',
+      'transfer': 'تحويل',
+      'topup': 'شحن',
+      'bill': 'فاتورة'
+    };
+    return typeMap[type] || type;
+  };
+  
+  const displayType = isMachine ? getMachineTypeLabel(operation.type) : operation.type;
 
   return (
     <tr className={`${styles.row} ${isSend ? styles.sendRow : styles.receiveRow}`}>
       <td>{index + 1}</td>
-      <td className={styles.phoneCell}>{operation.phone}</td>
+      <td>
+        <span className={styles.sourceBadge}>
+          {isMachine ? 'ماكينة' : 'خط'}
+        </span>
+      </td>
+      <td className={styles.phoneCell}>
+        {isMachine ? (
+          <>
+            {operation.machineName} ({operation.machineCode || operation.phone})
+          </>
+        ) : (
+          operation.phone
+        )}
+      </td>
       <td>
         <span className={`${styles.typeBadge} ${isSend ? styles.sendBadge : styles.receiveBadge}`}>
-          {operation.type}
+          {displayType}
         </span>
       </td>
       <td className={styles.moneyCell}>{Number(operation.amount).toLocaleString('en-US')}</td>

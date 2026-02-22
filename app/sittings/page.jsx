@@ -24,6 +24,7 @@ export default function Sittings() {
     sittings: false,
     dashboard: false,
     expenses: false,
+    machines: false,
   });
   const [selectedUser, setSelectedUser] = useState(null);
   const [active, setActive] = useState(false);
@@ -50,6 +51,7 @@ export default function Sittings() {
         sittings: false,
         dashboard: false,
         expenses: false,
+        machines: false,
       });
       setActive(user.permissions?.active ?? true);
     }
@@ -270,6 +272,18 @@ export default function Sittings() {
                     />
                     <span className={styles.toggleSlider}></span>
                     <span className={styles.toggleText}>صفحة المصاريف</span>
+                  </label>
+                </div>
+                <div className={styles.permissionItem}>
+                  <label className={styles.toggleLabel}>
+                    <input
+                      type="checkbox"
+                      className={styles.toggleInput}
+                      checked={permissions.machines || false}
+                      onChange={() => togglePermission('machines')}
+                    />
+                    <span className={styles.toggleSlider}></span>
+                    <span className={styles.toggleText}>صفحة المكينات</span>
                   </label>
                 </div>
               </div>
